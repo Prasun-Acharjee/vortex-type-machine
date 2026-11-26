@@ -69,7 +69,7 @@ input[type=range]::-moz-range-thumb{width:12px;height:12px;background:#000;borde
     <button id="bC" type="button">Cut</button>
     <button id="bF" type="button">Fullscreen</button>
   </div><div id="muse"></div></div>
-  <p class="note">Flashing visuals. Space or tap = cut · H = hide panel. With music loaded, cuts follow the kick drum.</p>
+  <p class="note">Flashing visuals. Space or tap = cut · H = hide panel. Load any song: it reads the tempo, beats and loud parts, and cuts to them.</p>
 </aside>
 <input id="fa" type="file" accept="audio/*" hidden>
 <input id="fm" type="file" accept="image/*,video/*" hidden>
@@ -292,30 +292,73 @@ function size(){const d=Math.min(devicePixelRatio||1,2),w=innerWidth*d,h=innerHe
 /* ---------- cuts, presets ---------- */
 let glitchB=0,smearB=0,punch=0,gMul=1,mMul=1,vMul=1;
 const pick=a=>a[Math.floor(Math.random()*a.length)];
-/* song choreography, from analysing the track (123 BPM) and the original edit */
-const SONG={beat:60/123,off:.07,len:13.37,split:5,hits:[2.02,3.52,8.52],kicks:[.12,.42,1.9,2.23,2.86,3.32,3.58,4.02,4.3,4.57,4.78,6.22,6.78,7.85,8.64,8.85,9.17,9.52,9.85,10.05,10.82,11.1,11.82,12.52,13.03]};
+/* ---------- song profiles: tempo, beat grid, kicks, accents and intensity per bar ---------- */
 const R_=Math.random,wpick=o=>{let r=R_(),k;for(k in o){r-=o[k];if(r<=0)return k}return k};
-function cutA(){// dark, bass-heavy opening: the figure, the panel and the lines; type is rare
+const ub=(a,v)=>{let lo=0,hi=a.length;while(lo<hi){const m=(lo+hi)>>1;if(a[m]<=v)lo=m+1;else hi=m}return lo};
+let SONGD=null;
+function builtin(){// measured from the original track
+ const bpm=123,beat=60/bpm,off=.07,bars=[];for(let t=off;t<14.5;t+=beat*4)bars.push(t<5?{i:.3,b:.2}:t<9?{i:.8,b:.7}:{i:.95,b:.75});
+ return{src:new URL(TRACK,location.href).href,bpm,beat,off,bars,hits:[2.02,3.52,8.52],kicks:[.12,.42,1.9,2.23,2.86,3.32,3.58,4.02,4.3,4.57,4.78,6.22,6.78,7.85,8.64,8.85,9.17,9.52,9.85,10.05,10.82,11.1,11.82,12.52,13.03]}}
+async function analyze(buf,src){
+ const sr=22050,len=Math.min(buf.duration,600),N=Math.ceil(len*sr),oc=new OfflineAudioContext(3,N,sr),s=oc.createBufferSource();s.buffer=buf;
+ const lp=oc.createBiquadFilter();lp.type='lowpass';lp.frequency.value=150;const hp=oc.createBiquadFilter();hp.type='highpass';hp.frequency.value=4000;
+ const mg=oc.createChannelMerger(3);s.connect(mg,0,0);s.connect(lp);lp.connect(mg,0,1);s.connect(hp);hp.connect(mg,0,2);mg.connect(oc.destination);s.start();
+ const r=await oc.startRendering(),HP=512,F=Math.floor(N/HP),fps=sr/HP;
+ const E=[0,1,2].map(c=>{const d=r.getChannelData(c),e=new Float32Array(F);for(let f=0;f<F;f++){let q=0;const o=f*HP;for(let k=0;k<HP;k++){const v=d[o+k];q+=v*v}e[f]=Math.sqrt(q/HP)}return e});
+ const ON=E.map(e=>{const o=new Float32Array(F);let p=Math.log(1e-4+e[0]);for(let f=1;f<F;f++){const l=Math.log(1e-4+e[f]);o[f]=Math.max(0,l-p);p=l}return o});
+ const O0=new Float32Array(F);for(let f=0;f<F;f++)O0[f]=ON[0][f]+1.2*ON[1][f]+.6*ON[2][f];
+ // onset curve minus its local average, so steady noise does not count
+ const OE=new Float32Array(F),W2=10;{let acc=0,n=0;for(let f=0;f<Math.min(F,W2);f++){acc+=O0[f];n++}
+  for(let f=0;f<F;f++){if(f+W2<F){acc+=O0[f+W2];n++}if(f-W2-1>=0){acc-=O0[f-W2-1];n--}OE[f]=Math.max(0,O0[f]-acc/n)}}
+ // tempo: for each candidate, how strongly onsets (kicks weighted up) line up on its beat grid at the best offset
+ const Fa=Math.min(F,Math.floor(fps*240)),TK=new Float32Array(Fa);let tm=0;for(let f=0;f<Fa;f++){TK[f]=OE[f]+.3*ON[1][f]+.6*ON[2][f];tm+=TK[f]}tm/=Fa||1;let tsd=0;for(let f=0;f<Fa;f++)tsd+=(TK[f]-tm)**2;tsd=Math.sqrt(tsd/(Fa||1));
+ const at=(a,i)=>a[Math.round(i)]||0;let bpm=120,best=-1e9;
+ const T0=Math.floor(Math.min(fps*30,F*.15)),T1=Math.min(Fa,T0+Math.floor(fps*60));// one minute from early in the song
+ const base=c=>{const L=60*fps/c;let bq=0,nn=1;for(let p=0;p<L;p+=.5){let q=0,n=0;for(let k=T0+p;k<T1;k+=L){q+=Math.max(at(TK,k),at(TK,k-1),at(TK,k+1));n++}q/=n||1;nn=n||1;if(q>bq)bq=q}
+  return bq-tm-tsd*Math.sqrt(2*Math.log(2*L))/Math.sqrt(nn)};// minus what chance alone would give this grid
+ for(let c=70;c<=180;c+=.25){const sc=(base(c)+.5*base(2*c))*Math.exp(-.5*(Math.log2(c/120)/1.3)**2);if(sc>best){best=sc;bpm=c}}// the half-beat grid breaks 3:2 ties
+ // beat phase, then which beat is the downbeat (strongest kicks)
+ const bF=fps*60/bpm;let bp=0,bs=-1;
+ for(let p=0;p<bF;p+=.5){let q=0;for(let k=p;k<Fa;k+=bF)q+=at(OE,k)+.5*at(OE,k-1)+.5*at(OE,k+1)+1.5*at(ON[1],k);if(q>bs){bs=q;bp=p}}
+ let dq=0,ds=-1;for(let qd=0;qd<4;qd++){let q=0;for(let k=bp+qd*bF;k<F;k+=4*bF)q+=at(ON[1],k)+at(E[1],k);if(q>ds){ds=q;dq=qd}}
+ const beat=60/bpm,off=(bp+dq*bF)/fps%(beat*4);
+ // kicks: peaks in the low-band onset curve
+ const lo=ON[1];let lm=0,lv=0;for(let f=0;f<F;f++)lm+=lo[f];lm/=F;for(let f=0;f<F;f++)lv+=(lo[f]-lm)**2;const thr=lm+1.6*Math.sqrt(lv/F);
+ const kicks=[];let lk=-1e9;for(let f=1;f<F-1;f++)if(lo[f]>thr&&lo[f]>=lo[f-1]&&lo[f]>=lo[f+1]&&f-lk>fps*.18){kicks.push(f/fps);lk=f}
+ // per-bar loudness and brightness → intensity 0..1, contrast stretched per song
+ const bar=beat*4,nb=Math.max(1,Math.ceil((len-off)/bar)),en=[],br=[];
+ for(let b=0;b<nb;b++){const f0=Math.floor((off+b*bar)*fps),f1=Math.min(F,Math.floor((off+(b+1)*bar)*fps));let e=0,h=0,l=0,n=0;for(let f=Math.max(0,f0);f<f1;f++){e+=E[0][f];h+=E[2][f];l+=E[1][f];n++}n=n||1;en.push(e/n);br.push(Math.log((h/n+1e-5)/(l/n+1e-5)))}
+ const pc=(a,p)=>{const s2=[...a].sort((x,y)=>x-y);return s2[Math.min(s2.length-1,Math.floor(p*(s2.length-1)))]};
+ const nrm=a=>{const a0=pc(a,.1),a1=pc(a,.9);return a.map(v=>Math.min(1,Math.max(0,(v-a0)/((a1-a0)||1))))};
+ const ne=nrm(en),nbr=nrm(br);let I=ne.map((v,i)=>.65*v+.35*nbr[i]);I=I.map((v,i)=>.25*(I[i-1]??v)+.5*v+.25*(I[i+1]??v));I=nrm(I);
+ const bars=I.map((v,i)=>({i:.15+.85*v,b:nbr[i]}));
+ // accents: bars that jump in loudness against the two before
+ const nov=en.map((v,i)=>i<2?0:v-(en[i-1]+en[i-2])/2);let nm=0,ns=0;nov.forEach(v=>nm+=v);nm/=nov.length;nov.forEach(v=>ns+=(v-nm)**2);ns=Math.sqrt(ns/nov.length);
+ const hits=[];nov.forEach((v,i)=>{if(v>0&&v>nm+1.5*ns)hits.push(off+i*bar)});
+ return{src,bpm,beat,off,bars,hits,kicks}}
+function cutA(bb){// quieter passages: the figure, the panel and the lines; type is rare
  S.pal=wpick({white:.42,red:.43,black:.15});S.panel=P.panel&&R_()<.6;S.polys=P.lines&&R_()<.75;S.vortex=P.type&&R_()<.12;
  S.fig=P.fig?(R_()<.5?'hatch':'solid'):'none';S.top=P.fig&&R_()<.55;S.edge=0;S.inv=R_()<.05?1:0;
  if(P.fig&&R_()<.25){S.vortex=false;S.panel=false;S.top=true;S.polys=false;S.pal=R_()<.7?'white':'red'}
  S.cx=(R_()-.5)*W*.06;S.cy=(R_()-.5)*H*.06;glitchB=.8;smearB=.9;punch=Math.max(punch,.7)}
-function cutB(){// brighter half: the type spiral takes over, cyan comes in, faster and harder
- S.pal=wpick({red:.4,white:.24,cyan:.26,black:.1});S.panel=P.panel&&R_()<.55;S.polys=P.lines&&R_()<.8;S.vortex=P.type&&R_()<.92;
+function cutB(bb){// loud, bright passages: the type spiral takes over, cyan comes in with brightness
+ bb=bb==null?.5:bb;S.pal=wpick({red:.4,white:.24,cyan:.08+.3*bb,black:.1});S.panel=P.panel&&R_()<.55;S.polys=P.lines&&R_()<.8;S.vortex=P.type&&R_()<.92;
  S.fig=P.fig?(R_()<.45?'hatch':'solid'):'none';S.top=P.fig&&R_()<.35;S.edge=R_()<.06?1:0;S.inv=R_()<.06?1:0;
  if(P.mash&&R_()<.6)S.word=pick(WORDS);S.cx=(R_()-.5)*W*.1;S.cy=(R_()-.5)*H*.1;glitchB=1;smearB=.5;punch=1}
 function bigHit(){S.inv=1;S.edge=R_()<.5?1:0;S.vortex=P.type;S.pal=R_()<.5?'black':'red';glitchB=1.4;smearB=1;punch=1.4}
 function intro(){Object.assign(S,{pal:'white',panel:false,fig:'none',top:true,edge:0,inv:0,vortex:false,polys:false,cx:0,cy:0});glitchB=.6;punch=1}
-let songT=-1,song16=-1;
-function songStep(st){// called every frame while the original track plays
- if(st<songT-1)intro();
- const B=st>=SONG.split,q=SONG.beat/4,i=Math.floor((st-SONG.off)/q);
- gMul=B?1.35:.8;mMul=B?.75:1.35;vMul=B?1.5:.6;
- for(const h of SONG.hits)if(songT<h&&st>=h)bigHit();
- for(const k of SONG.kicks)if(songT<k&&st>=k)punch=Math.max(punch,.8);
- if(i!==song16&&songT>=0){song16=i;const eighth=i%2===0,beat=i%4===0,rate=P.cuts/.55;
-  let pr=B?(eighth?.8:(st>9?.45:.12)):(beat?.75:eighth?.4:0);
-  if(P.auto&&R_()<pr*rate)(B?cutB:cutA)()}
+let songT=-1,song16=-1,hitN=0,kickN=0;
+function songStep(st){const Z=SONGD;
+ if(st<songT-1){intro();song16=-1}
+ const bi=Math.max(0,Math.min(Z.bars.length-1,Math.floor((st-Z.off)/(Z.beat*4)))),bar=Z.bars[bi],I=bar.i,tf=Math.min(1.4,Math.max(.6,123/Z.bpm));
+ gMul=.75+I*.7;mMul=1.45-I*.8;vMul=(.5+I*1.1)/Math.sqrt(tf);
+ const nh=ub(Z.hits,st),nk=ub(Z.kicks,st);
+ if(songT>=0&&st>songT){if(nh>hitN)bigHit();else if(nk>kickN)punch=Math.max(punch,.8)}
+ hitN=nh;kickN=nk;
+ const i=Math.floor((st-Z.off)/(Z.beat/4));
+ if(i!==song16&&songT>=0&&st>songT){song16=i;const e8=((i%2)+2)%2===0,b4=((i%4)+4)%4===0;
+  const pr=b4?.45+.4*I:e8?Math.max(0,I-.15)*.95:(I>.72?(I-.72)*1.6:0);
+  if(P.auto&&R_()<pr*tf*P.cuts/.55)(R_()<I?cutB:cutA)(bar.b)}
  songT=st}
 function cut(){const r=Math.random();S.pal=r<.45?'red':r<.7?'white':r<.85?'cyan':'black';
  S.panel=P.panel&&Math.random()<.7;S.fig=P.fig?(Math.random()<.55?'hatch':Math.random()<.65?'solid':'none'):'none';
@@ -361,13 +404,17 @@ let ac=null,an=null,ab=null,audio=null,avg=0,lastBeat=0;
 const say=t=>{const m=$('#muse');m.style.display='block';m.textContent=t};
 function initAudio(){if(ac)return;ac=new(window.AudioContext||window.webkitAudioContext)();audio=new Audio();audio.loop=true;audio.preload='auto';const src=ac.createMediaElementSource(audio);
  an=ac.createAnalyser();an.fftSize=1024;an.smoothingTimeConstant=.6;ab=new Uint8Array(an.frequencyBinCount);src.connect(an);an.connect(ac.destination)}
-function playSrc(url,name){try{initAudio();if(audio.src&&audio.src.startsWith('blob:'))URL.revokeObjectURL(audio.src);audio.src=url;ac.resume();
+function playSrc(url,name){try{initAudio();SONGD=null;songT=-1;if(audio.src&&audio.src.startsWith('blob:'))URL.revokeObjectURL(audio.src);audio.src=url;ac.resume();
  audio.play().then(()=>{$('#bP').textContent='Pause';say('♪ '+name)}).catch(()=>{$('#bP').textContent='Play';say('Tap Play to start the audio.')});$('#go').classList.add('off')}catch(err){say('This browser could not play that audio.')}}
 const TRACK='music.mp3';
-$('#go').onclick=e=>{e.stopPropagation();playSrc(TRACK,'Original track');intro()};
+$('#go').onclick=e=>{e.stopPropagation();playSrc(TRACK,'Original track');SONGD=builtin();intro()};
 $('#bA').onclick=()=>$('#fa').click();
-$('#fa').onchange=e=>{const f=e.target.files[0];if(!f)return;playSrc(URL.createObjectURL(f),f.name)};
-$('#bP').onclick=()=>{if(!audio){playSrc(TRACK,'Original track');return}ac.resume();if(audio.paused){audio.play().catch(()=>{});$('#bP').textContent='Pause';$('#go').classList.add('off')}else{audio.pause();$('#bP').textContent='Play'}};
+$('#fa').onchange=async e=>{const f=e.target.files[0];if(!f)return;playSrc(URL.createObjectURL(f),f.name);const src=audio.src;
+ setTimeout(()=>say('♪ '+f.name+' · reading the beat…'),60);
+ try{const buf=await new Promise((ok,no)=>{f.arrayBuffer().then(ab=>{const pr=ac.decodeAudioData(ab,ok,no);if(pr&&pr.catch)pr.catch(no)},no)});const prof=await analyze(buf,src);
+  if(audio.src===src){SONGD=prof;intro();P.bpm=Math.round(prof.bpm);syncUI();say('♪ '+f.name+' · '+Math.round(prof.bpm)+' BPM · synced')}}
+ catch(err){if(audio.src===src)say('♪ '+f.name+' · following the beat live')}};
+$('#bP').onclick=()=>{if(!audio){playSrc(TRACK,'Original track');SONGD=builtin();intro();return}ac.resume();if(audio.paused){audio.play().catch(()=>{});$('#bP').textContent='Pause';$('#go').classList.add('off')}else{audio.pause();$('#bP').textContent='Play'}};
 /* figure media */
 $('#bM').onclick=()=>$('#fm').click();
 $('#fm').onchange=e=>{const f=e.target.files[0];if(!f)return;const url=URL.createObjectURL(f);
@@ -378,7 +425,7 @@ $('#bR').onclick=()=>{if(media&&media.pause)media.pause();media=null;$('#bR').hi
 /* ---------- loop ---------- */
 let last=performance.now(),t=0,beatT=0,figT=0;
 function loop(now){const dt=Math.min(.05,(now-last)/1000);last=now;t+=dt;frame++;let beat=false;
- const songMode=audio&&!audio.paused&&audio.src.endsWith(TRACK);
+ const songMode=audio&&!audio.paused&&SONGD&&SONGD.src===audio.src;
  if(songMode){an.getByteFrequencyData(ab);let all=0;for(let i=0;i<220;i++)all+=ab[i];lvl=lvl*.7+all/(220*255)*.3;songStep(audio.currentTime)}
  else{gMul=mMul=vMul=1;songT=-1;}
  if(songMode){}else if(an&&audio&&!audio.paused){an.getByteFrequencyData(ab);let e=0,all=0;for(let i=1;i<10;i++)e+=ab[i];e/=9*255;for(let i=0;i<220;i++)all+=ab[i];
