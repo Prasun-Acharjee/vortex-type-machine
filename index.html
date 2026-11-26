@@ -80,7 +80,7 @@ let view=$('#view');
 const sc=document.createElement('canvas'),x=sc.getContext('2d');
 let W=0,H=0,grungeC=null;
 const RM=matchMedia('(prefers-reduced-motion: reduce)').matches;
-const P={speed:.55,size:.28,twist:.35,glitch:.5,smear:.4,cuts:.55,bpm:124,type:true,lines:true,fig:true,panel:true,auto:true,mash:true,glyph:'type'};
+const P={speed:.55,size:.28,twist:.35,glitch:.5,smear:.4,cuts:.55,bpm:123,type:true,lines:true,fig:true,panel:true,auto:true,mash:true,glyph:'type'};
 if(RM)Object.assign(P,{speed:.2,glitch:0,smear:.15,cuts:.08});
 const PAL={
  red:{bg:'#e3140f',pn:'#060606',a:'#f4f1ea',b:'#38e4e2',gr:.55,fig:'#1b1b1b',ghost:'#5a0505'},
@@ -280,8 +280,8 @@ function post(t){const wr=1-rd;
  gl.texImage2D(gl.TEXTURE_2D,0,gl.RGBA,gl.RGBA,gl.UNSIGNED_BYTE,sc);
  gl.activeTexture(gl.TEXTURE1);gl.bindTexture(gl.TEXTURE_2D,fb[rd].t);
  gl.useProgram(pm);attr(pm);gl.uniform1i(U.S,0);gl.uniform1i(U.Pv,1);gl.uniform2f(U.R,W,H);gl.uniform1f(U.T,t);
- const g=P.glitch;gl.uniform1f(U.G,g*(.1+glitchB*.9));gl.uniform1f(U.RG,g*(.25+glitchB*.75)+lvl*.3);
- gl.uniform1f(U.M,Math.min(.93,P.smear*.7+smearB*P.smear));gl.uniform1f(U.IV,S.inv);gl.uniform1f(U.ED,S.edge);gl.uniform1f(U.GR,.06);gl.uniform1f(U.Z,1+punch*.05);
+ const g=Math.min(1,P.glitch*gMul);gl.uniform1f(U.G,g*(.1+glitchB*.9));gl.uniform1f(U.RG,g*(.25+glitchB*.75)+lvl*.3);
+ gl.uniform1f(U.M,Math.min(.93,(P.smear*.7+smearB*P.smear)*mMul));gl.uniform1f(U.IV,S.inv);gl.uniform1f(U.ED,S.edge);gl.uniform1f(U.GR,.06);gl.uniform1f(U.Z,1+punch*.05);
  gl.bindFramebuffer(gl.FRAMEBUFFER,fb[wr].f);gl.viewport(0,0,W,H);gl.drawArrays(gl.TRIANGLE_STRIP,0,4);
  gl.useProgram(pb);attr(pb);gl.activeTexture(gl.TEXTURE0);gl.bindTexture(gl.TEXTURE_2D,fb[wr].t);gl.uniform1i(U.b,0);
  gl.bindFramebuffer(gl.FRAMEBUFFER,null);gl.viewport(0,0,W,H);gl.drawArrays(gl.TRIANGLE_STRIP,0,4);rd=wr}
@@ -290,8 +290,33 @@ function size(){const d=Math.min(devicePixelRatio||1,2),w=innerWidth*d,h=innerHe
  W=sc.width=Math.max(2,Math.round(w*s));H=sc.height=Math.max(2,Math.round(h*s));if(gl){view.width=W;view.height=H;mkFbos()}grungeC=grunge()}
 
 /* ---------- cuts, presets ---------- */
-let glitchB=0,smearB=0,punch=0;
+let glitchB=0,smearB=0,punch=0,gMul=1,mMul=1,vMul=1;
 const pick=a=>a[Math.floor(Math.random()*a.length)];
+/* song choreography, from analysing the track (123 BPM) and the original edit */
+const SONG={beat:60/123,off:.07,len:13.37,split:5,hits:[2.02,3.52,8.52],kicks:[.12,.42,1.9,2.23,2.86,3.32,3.58,4.02,4.3,4.57,4.78,6.22,6.78,7.85,8.64,8.85,9.17,9.52,9.85,10.05,10.82,11.1,11.82,12.52,13.03]};
+const R_=Math.random,wpick=o=>{let r=R_(),k;for(k in o){r-=o[k];if(r<=0)return k}return k};
+function cutA(){// dark, bass-heavy opening: the figure, the panel and the lines; type is rare
+ S.pal=wpick({white:.42,red:.43,black:.15});S.panel=P.panel&&R_()<.6;S.polys=P.lines&&R_()<.75;S.vortex=P.type&&R_()<.12;
+ S.fig=P.fig?(R_()<.5?'hatch':'solid'):'none';S.top=P.fig&&R_()<.55;S.edge=0;S.inv=R_()<.05?1:0;
+ if(P.fig&&R_()<.25){S.vortex=false;S.panel=false;S.top=true;S.polys=false;S.pal=R_()<.7?'white':'red'}
+ S.cx=(R_()-.5)*W*.06;S.cy=(R_()-.5)*H*.06;glitchB=.8;smearB=.9;punch=Math.max(punch,.7)}
+function cutB(){// brighter half: the type spiral takes over, cyan comes in, faster and harder
+ S.pal=wpick({red:.4,white:.24,cyan:.26,black:.1});S.panel=P.panel&&R_()<.55;S.polys=P.lines&&R_()<.8;S.vortex=P.type&&R_()<.92;
+ S.fig=P.fig?(R_()<.45?'hatch':'solid'):'none';S.top=P.fig&&R_()<.35;S.edge=R_()<.06?1:0;S.inv=R_()<.06?1:0;
+ if(P.mash&&R_()<.6)S.word=pick(WORDS);S.cx=(R_()-.5)*W*.1;S.cy=(R_()-.5)*H*.1;glitchB=1;smearB=.5;punch=1}
+function bigHit(){S.inv=1;S.edge=R_()<.5?1:0;S.vortex=P.type;S.pal=R_()<.5?'black':'red';glitchB=1.4;smearB=1;punch=1.4}
+function intro(){Object.assign(S,{pal:'white',panel:false,fig:'none',top:true,edge:0,inv:0,vortex:false,polys:false,cx:0,cy:0});glitchB=.6;punch=1}
+let songT=-1,song16=-1;
+function songStep(st){// called every frame while the original track plays
+ if(st<songT-1)intro();
+ const B=st>=SONG.split,q=SONG.beat/4,i=Math.floor((st-SONG.off)/q);
+ gMul=B?1.35:.8;mMul=B?.75:1.35;vMul=B?1.5:.6;
+ for(const h of SONG.hits)if(songT<h&&st>=h)bigHit();
+ for(const k of SONG.kicks)if(songT<k&&st>=k)punch=Math.max(punch,.8);
+ if(i!==song16&&songT>=0){song16=i;const eighth=i%2===0,beat=i%4===0,rate=P.cuts/.55;
+  let pr=B?(eighth?.8:(st>9?.45:.12)):(beat?.75:eighth?.4:0);
+  if(P.auto&&R_()<pr*rate)(B?cutB:cutA)()}
+ songT=st}
 function cut(){const r=Math.random();S.pal=r<.45?'red':r<.7?'white':r<.85?'cyan':'black';
  S.panel=P.panel&&Math.random()<.7;S.fig=P.fig?(Math.random()<.55?'hatch':Math.random()<.65?'solid':'none'):'none';
  S.top=P.fig&&Math.random()<.4;S.edge=Math.random()<.12?1:0;S.inv=Math.random()<.07?1:0;S.vortex=P.type&&Math.random()<.88;S.polys=P.lines&&Math.random()<.85;
@@ -339,7 +364,7 @@ function initAudio(){if(ac)return;ac=new(window.AudioContext||window.webkitAudio
 function playSrc(url,name){try{initAudio();if(audio.src&&audio.src.startsWith('blob:'))URL.revokeObjectURL(audio.src);audio.src=url;ac.resume();
  audio.play().then(()=>{$('#bP').textContent='Pause';say('♪ '+name)}).catch(()=>{$('#bP').textContent='Play';say('Tap Play to start the audio.')});$('#go').classList.add('off')}catch(err){say('This browser could not play that audio.')}}
 const TRACK='music.mp3';
-$('#go').onclick=e=>{e.stopPropagation();playSrc(TRACK,'Original track');cut()};
+$('#go').onclick=e=>{e.stopPropagation();playSrc(TRACK,'Original track');intro()};
 $('#bA').onclick=()=>$('#fa').click();
 $('#fa').onchange=e=>{const f=e.target.files[0];if(!f)return;playSrc(URL.createObjectURL(f),f.name)};
 $('#bP').onclick=()=>{if(!audio){playSrc(TRACK,'Original track');return}ac.resume();if(audio.paused){audio.play().catch(()=>{});$('#bP').textContent='Pause';$('#go').classList.add('off')}else{audio.pause();$('#bP').textContent='Play'}};
@@ -353,12 +378,15 @@ $('#bR').onclick=()=>{if(media&&media.pause)media.pause();media=null;$('#bR').hi
 /* ---------- loop ---------- */
 let last=performance.now(),t=0,beatT=0,figT=0;
 function loop(now){const dt=Math.min(.05,(now-last)/1000);last=now;t+=dt;frame++;let beat=false;
- if(an&&audio&&!audio.paused){an.getByteFrequencyData(ab);let e=0,all=0;for(let i=1;i<10;i++)e+=ab[i];e/=9*255;for(let i=0;i<220;i++)all+=ab[i];
+ const songMode=audio&&!audio.paused&&audio.src.endsWith(TRACK);
+ if(songMode){an.getByteFrequencyData(ab);let all=0;for(let i=0;i<220;i++)all+=ab[i];lvl=lvl*.7+all/(220*255)*.3;songStep(audio.currentTime)}
+ else{gMul=mMul=vMul=1;songT=-1;}
+ if(songMode){}else if(an&&audio&&!audio.paused){an.getByteFrequencyData(ab);let e=0,all=0;for(let i=1;i<10;i++)e+=ab[i];e/=9*255;for(let i=0;i<220;i++)all+=ab[i];
   lvl=lvl*.7+all/(220*255)*.3;if(e>avg*1.22&&e>.32&&now-lastBeat>260){beat=true;lastBeat=now}avg=avg*.93+e*.07}
- else{lvl*=.9;beatT+=dt*P.bpm/60;if(beatT>=1){beatT-=1;beat=true}}
+ else if(!songMode){lvl*=.9;beatT+=dt*P.bpm/60*2;if(beatT>=1){beatT-=1;beat=true}}
  if(beat){punch=Math.max(punch,.6);if(P.auto&&Math.random()<P.cuts)cut()}
  glitchB*=Math.pow(.02,dt);smearB*=Math.pow(.12,dt);punch*=Math.pow(.01,dt);
- uAcc+=dt*P.speed*6*(1+lvl*1.5);rAcc+=dt*P.twist*(1+lvl);
+ uAcc+=dt*P.speed*6*vMul*(1+lvl*1.5);rAcc+=dt*P.twist*vMul*(1+lvl);
  if(t-figT>1/12){figT=t;buildFig(t)}
  draw(t);if(gl)post(t);requestAnimationFrame(loop)}
 let rz;addEventListener('resize',()=>{clearTimeout(rz);rz=setTimeout(size,120)});
