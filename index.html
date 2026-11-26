@@ -59,7 +59,7 @@ input[type=range]::-moz-range-thumb{width:12px;height:12px;background:#000;borde
 <div id="start"><button id="go" type="button">▶ PLAY WITH SOUND</button><button id="gu" type="button">♫ LOAD YOUR SONG</button></div>
 <aside id="ui" aria-label="Visualizer controls">
   <div class="hd"><b>VTX·TYPE</b><span>machine 0.1</span><button id="x" type="button" aria-label="Hide controls">×</button></div>
-  <label class="f">Word<input id="word" value="fdgf" maxlength="24" autocomplete="off" spellcheck="false"></label>
+  <label class="f">Word<input id="word" value="prasun" maxlength="24" autocomplete="off" spellcheck="false"></label>
   <div class="sl" id="sl"></div>
   <div class="grp"><i>Layers</i><div class="tg" id="tg"></div></div>
   <div class="grp"><i>Presets</i><div class="pr" id="pr"></div></div>
@@ -82,7 +82,7 @@ let view=$('#view');
 const sc=document.createElement('canvas'),x=sc.getContext('2d');
 let W=0,H=0,grungeC=null;
 const RM=matchMedia('(prefers-reduced-motion: reduce)').matches;
-const P={speed:.55,size:.28,twist:.35,glitch:.5,smear:.4,cuts:.55,bpm:123,type:true,lines:true,fig:true,panel:true,auto:true,mash:true,glyph:'type'};
+const P={speed:.55,size:.28,twist:.35,glitch:.5,smear:.4,cuts:.55,bpm:123,type:true,lines:true,fig:true,panel:true,auto:true,mash:false,glyph:'type'};
 if(RM)Object.assign(P,{speed:.2,glitch:0,smear:.15,cuts:.08});
 const PAL={
  red:{bg:'#e3140f',pn:'#060606',a:'#f4f1ea',b:'#38e4e2',gr:.55,fig:'#1b1b1b',ghost:'#5a0505'},
@@ -90,7 +90,7 @@ const PAL={
  cyan:{bg:'#33e3e6',pn:'#080808',a:'#f2f0eb',b:'#e3140f',gr:.35,fig:'#151515',ghost:'#0a3a3a'},
  black:{bg:'#070707',pn:'#e3140f',a:'#070707',b:'#f2f0eb',gr:0,fig:'#e3140f',ghost:'#e3140f'}};
 const WORDS=['fdgf','fe','fgfg','vfvf','ere','tftf','dgdg','xvxv','ut','ffff'];
-const S={pal:'white',panel:false,fig:'none',top:true,edge:0,inv:0,vortex:false,polys:false,cx:0,cy:0,word:'fdgf'};
+const S={pal:'white',panel:false,fig:'none',top:true,edge:0,inv:0,vortex:false,polys:false,cx:0,cy:0,word:'prasun'};
 
 /* ---------- figure (procedural arched body) ---------- */
 const FW=1000,FH=520;
@@ -198,7 +198,7 @@ function drawFigure(box,alpha,inPanel){const pal=PAL[S.pal];x.save();x.globalAlp
 let uAcc=0,rAcc=0,lvl=0;
 function panelRect(){const land=W>H*1.1;const w=land?W*.5:W*.78,h=land?H*.48:H*.36;return{x:(W-w)/2,y:(H-h)/2,w,h}}
 function vortex(pr){const pal=PAL[S.pal],c=P.size,b=-Math.log(1-1.12*c)/(2*Math.PI),dth=.72*c/Math.sqrt(1+b*b);
- const R=Math.hypot(W,H)*.62,f=uAcc-Math.floor(uAcc),base=Math.floor(uAcc),cx=W/2+S.cx,cy=H/2+S.cy,w=S.word||'fdgf',L=w.length;
+ const R=Math.hypot(W,H)*.62,f=uAcc-Math.floor(uAcc),base=Math.floor(uAcc),cx=W/2+S.cx,cy=H/2+S.cy,w=S.word||'prasun',L=w.length;
  x.textAlign='center';x.textBaseline='middle';x.font='900 100px Archivo, Arial Black, sans-serif';
  for(let i=0;i<3000;i++){const s=(i+f)*dth,r=R*Math.exp(-b*s);if(r<1.2)break;const sz=r*c,th=s+rAcc,px=cx+r*Math.cos(th),py=cy+r*Math.sin(th);
   if(px<-sz||px>W+sz||py<-sz||py>H+sz)continue;
@@ -391,7 +391,7 @@ function clearPre(){document.querySelectorAll('#pr button').forEach(b=>b.classLi
 $('#pr').addEventListener('click',e=>{const b=e.target.closest('button');if(!b)return;const p=PRE[+b.dataset.i];
  Object.assign(P,p.p);if(RM)P.glitch=Math.min(P.glitch,.1);cut();Object.assign(S,p.s);S.vortex=P.type;S.polys=P.lines;if(!P.panel)S.panel=false;if(!P.fig)S.fig='none';
  syncUI();clearPre();b.classList.add('on')});
-$('#word').addEventListener('input',e=>{const v=e.target.value.replace(/\s+/g,' ');S.word=v.trim()?v:'fdgf';P.mash=false;$('#t-mash').setAttribute('aria-pressed',false)});
+$('#word').addEventListener('input',e=>{const v=e.target.value.replace(/\s+/g,' ');S.word=v.trim()?v:'prasun';P.mash=false;$('#t-mash').setAttribute('aria-pressed',false)});
 const ui=$('#ui'),tog=$('#tog');
 function showUI(on){ui.classList.toggle('off',!on);tog.classList.toggle('on',!on)}
 $('#x').onclick=()=>showUI(false);tog.onclick=()=>showUI(true);
