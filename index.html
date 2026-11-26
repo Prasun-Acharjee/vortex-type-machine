@@ -45,16 +45,18 @@ input[type=range]::-moz-range-thumb{width:12px;height:12px;background:#000;borde
 #tog{position:fixed;left:12px;bottom:12px;z-index:2;background:#000;display:none}
 #tog.on{display:block}
 #muse{display:none;margin-top:4px;opacity:.85;overflow-wrap:anywhere}
-#go{position:fixed;left:50%;bottom:max(7vh,64px);transform:translateX(-50%);z-index:3;background:#000;color:#fff;border:1px solid var(--cy);font:900 15px Archivo,sans-serif;letter-spacing:.04em;padding:12px 22px;min-height:46px}
-#go:hover{background:var(--cy);color:#000}
-#go.off{display:none}
+#start{position:fixed;left:50%;bottom:max(7vh,64px);transform:translateX(-50%);z-index:3;display:flex;gap:8px;flex-wrap:wrap;justify-content:center;width:max-content;max-width:calc(100vw - 24px)}
+#start button{background:#000;color:#fff;border:1px solid var(--cy);font:900 15px Archivo,sans-serif;letter-spacing:.04em;padding:12px 20px;min-height:46px}
+#start button:hover{background:var(--cy);color:#000}
+#start.off{display:none}
+#tog.on{bottom:12px}
 @media(max-width:600px){#ui{left:8px;right:8px;width:auto;top:auto;bottom:8px;max-height:56dvh}}
 </style>
 </head>
 <body>
 <canvas id="view" aria-label="Animated kinetic typography visualizer. Tap to cut to a new scene."></canvas>
 <button id="tog" type="button">Controls</button>
-<button id="go" type="button">▶ PLAY WITH SOUND</button>
+<div id="start"><button id="go" type="button">▶ PLAY WITH SOUND</button><button id="gu" type="button">♫ LOAD YOUR SONG</button></div>
 <aside id="ui" aria-label="Visualizer controls">
   <div class="hd"><b>VTX·TYPE</b><span>machine 0.1</span><button id="x" type="button" aria-label="Hide controls">×</button></div>
   <label class="f">Word<input id="word" value="fdgf" maxlength="24" autocomplete="off" spellcheck="false"></label>
@@ -405,16 +407,17 @@ const say=t=>{const m=$('#muse');m.style.display='block';m.textContent=t};
 function initAudio(){if(ac)return;ac=new(window.AudioContext||window.webkitAudioContext)();audio=new Audio();audio.loop=true;audio.preload='auto';const src=ac.createMediaElementSource(audio);
  an=ac.createAnalyser();an.fftSize=1024;an.smoothingTimeConstant=.6;ab=new Uint8Array(an.frequencyBinCount);src.connect(an);an.connect(ac.destination)}
 function playSrc(url,name){try{initAudio();SONGD=null;songT=-1;if(audio.src&&audio.src.startsWith('blob:'))URL.revokeObjectURL(audio.src);audio.src=url;ac.resume();
- audio.play().then(()=>{$('#bP').textContent='Pause';say('♪ '+name)}).catch(()=>{$('#bP').textContent='Play';say('Tap Play to start the audio.')});$('#go').classList.add('off')}catch(err){say('This browser could not play that audio.')}}
+ audio.play().then(()=>{$('#bP').textContent='Pause';say('♪ '+name)}).catch(()=>{$('#bP').textContent='Play';say('Tap Play to start the audio.')});$('#start').classList.add('off')}catch(err){say('This browser could not play that audio.')}}
 const TRACK='music.mp3';
 $('#go').onclick=e=>{e.stopPropagation();playSrc(TRACK,'Original track');SONGD=builtin();intro()};
 $('#bA').onclick=()=>$('#fa').click();
+$('#gu').onclick=e=>{e.stopPropagation();$('#fa').click()};
 $('#fa').onchange=async e=>{const f=e.target.files[0];if(!f)return;playSrc(URL.createObjectURL(f),f.name);const src=audio.src;
  setTimeout(()=>say('♪ '+f.name+' · reading the beat…'),60);
  try{const buf=await new Promise((ok,no)=>{f.arrayBuffer().then(ab=>{const pr=ac.decodeAudioData(ab,ok,no);if(pr&&pr.catch)pr.catch(no)},no)});const prof=await analyze(buf,src);
   if(audio.src===src){SONGD=prof;intro();P.bpm=Math.round(prof.bpm);syncUI();say('♪ '+f.name+' · '+Math.round(prof.bpm)+' BPM · synced')}}
  catch(err){if(audio.src===src)say('♪ '+f.name+' · following the beat live')}};
-$('#bP').onclick=()=>{if(!audio){playSrc(TRACK,'Original track');SONGD=builtin();intro();return}ac.resume();if(audio.paused){audio.play().catch(()=>{});$('#bP').textContent='Pause';$('#go').classList.add('off')}else{audio.pause();$('#bP').textContent='Play'}};
+$('#bP').onclick=()=>{if(!audio){playSrc(TRACK,'Original track');SONGD=builtin();intro();return}ac.resume();if(audio.paused){audio.play().catch(()=>{});$('#bP').textContent='Pause';$('#start').classList.add('off')}else{audio.pause();$('#bP').textContent='Play'}};
 /* figure media */
 $('#bM').onclick=()=>$('#fm').click();
 $('#fm').onchange=e=>{const f=e.target.files[0];if(!f)return;const url=URL.createObjectURL(f);
